@@ -1,0 +1,340 @@
+#!/usr/bin/env node
+
+const { basename, resolve } = require('path')
+const { access, stat } = require('fs')
+const hyperdrive = require('hyperdrive')
+const discovery = require('hyperdiscovery')
+const program = require('yargs')
+const extend = require('extend')
+const mirror = require('mirror-folder')
+const rimraf = require('rimraf')
+const pify = require('pify')
+const rc = require('rc')
+const fs = require('fs')
+
+process.on('uncaughtException', onfatal)
+process.on('unhandledRejection', onfatal)
+
+// used with `debug()' module
+const kDebugLabel = 'hyperdrive:cli'
+const debug = require('debug')(kDebugLabel)
+
+// program conf
+const conf = rc('hyperdrive', {
+  // program command alias mapping
+  aliases: {
+    init: ['i', 'initialize'],
+    read: ['get', 'cat'],
+    write: ['add', 'put', 'set'],
+    unlink: ['rm', 'delete', 'del', 'remove'],
+    readdir: ['list', 'ls', 'l'],
+  }
+})
+
+// program commands
+const commands = {
+  // can happen from any directory
+  async init() {
+    const [ pathspec = process.cwd() ] = argv._
+    const drive = hyperdrive(pathspec, argv.key, conf.drive)
+    await ready(drive)
+    await stats({drive})
+  },
+
+  // can happen from any directory
+  async info() {
+    const [ pathspec = process.cwd() ] = argv._
+    const drive = hyperdrive(pathspec, argv.key, conf.drive)
+    await stats({drive})
+  },
+
+  // must happen in current working directory
+  async stat() {
+    let [ pathspec = null ] = argv._
+
+    if (null == pathspec) {
+      fatal("Missing pathspec")
+    }
+
+    const drive = hyperdrive(process.cwd(), argv.key, conf.drive)
+    await ready(drive)
+
+    const stats = await pify(drive.stat.bind(drive))(pathspec)
+    console.log(stats);
+  },
+
+  // must happen in current working directory
+  async read() {
+    let [ pathspec = null ] = argv._
+
+    if (null == pathspec) {
+      fatal("Missing pathspec")
+    }
+
+    const drive = hyperdrive(process.cwd(), argv.key, conf.drive)
+    await ready(drive)
+
+    const stats = await pify(drive.stat.bind(drive))(pathspec)
+
+    if (stats.isDirectory()) {
+      fatal("Cannot read directory")
+    } else if (stats.isFile()) {
+      const reader = drive.createReadStream(pathspec, {
+        length: argv.length,
+        start: argv.start,
+        end: argv.end,
+      })
+
+      reader.pipe(process.stdout).on('end', () => {
+        process.exit(0)
+      })
+    }
+  },
+
+  // must happen in current working directory
+  async readdir() {
+    let [ pathspec = '/' ] = argv._
+    const drive = hyperdrive(process.cwd(), argv.key, conf.drive)
+    await ready(drive)
+    const files = await pify(drive.readdir.bind(drive))(pathspec)
+    for (const file of files) {
+      console.log("%s%s", pathspec, file)
+    }
+  },
+
+  // must happen in current working directory
+  async write() {
+    let [ pathspec = null ] = argv._
+
+    if (null == pathspec) {
+      fatal("Missing pathspec")
+    }
+
+    pathspec = resolve(pathspec)
+
+    const drive = hyperdrive(process.cwd(), argv.key, conf.drive)
+    await ready(drive)
+
+    const stats = await pify(stat)(pathspec)
+
+    if (stats.isDirectory()) {
+      await pify(mirror)(pathspec, {name: '/', fs: drive})
+    } else if (stats.isFile()) {
+      const opts = {start: argv.start}
+      const reader = fs.createReadStream(pathspec, opts)
+      const writer = drive.createWriteStream(pathspec, opts)
+      reader.pipe(writer).on('end', () => {
+        info("write: end")
+      })
+    }
+  },
+
+  // must happen in current working directory
+  async unlink() {
+    let [ pathspec = null ] = argv._
+
+    if (null == pathspec) {
+      fatal("Missing pathspec")
+    }
+
+    const drive = hyperdrive(process.cwd(), argv.key, conf.drive)
+    await ready(drive)
+
+    try {
+      await pify(drive.access.bind(drive))(pathspec)
+      await pify(drive.unlink.bind(drive))(pathspec)
+    } catch (err) {
+      onfatal(err)
+    }
+  },
+
+  // must happen in current working directory
+  async download() {
+    let [ pathspec = '/' ] = argv._
+
+    if (null == pathspec) {
+      fatal("Missing pathspec")
+    }
+
+    const drive = hyperdrive(process.cwd(), argv.key, conf.drive)
+    await ready(drive)
+
+    const swarm = discovery(drive, extend(true, conf.discovery || {}, {
+      live: false,
+      upload: false,
+      download: true,
+    }))
+
+    await pify(drive.download.bind(drive))(pathspec)
+    process.nextTick(() => process.exit(0))
+  },
+
+  // must happen in current working directory
+  async upload() {
+    const drive = hyperdrive(process.cwd(), argv.key, conf.drive)
+    await ready(drive)
+    const swarm = discovery(drive, extend(true, conf.discovery || {}, {
+      live: false,
+      upload: true,
+      download: false,
+    }))
+  },
+
+  async destroy() {
+    try {
+      await pify(access)(resolve(process.cwd(), 'metadata'))
+      await pify(rimraf)(resolve(process.cwd(), 'metadata'))
+    } catch (err) {
+      onerror(err)
+    }
+
+    try {
+      await pify(access)(resolve(process.cwd(), 'content'))
+      await pify(rimraf)(resolve(process.cwd(), 'content'))
+    } catch (err) {
+      onerror(err)
+    }
+  }
+}
+
+// passed to `yargs.usage()'
+const kProgramUsage = `
+Usage: $0: [-hDV] [--help] [--version]
+       $0: <command> [options] -- [pathspec]
+
+`.trimRight()
+
+const kProgramCommandUsage = `
+
+Commands:
+  init           Initialize a new archive
+  info           Show public information about the archive
+  read           Read from a file (Requires public key)
+  write          Write to a file (Requires secret key)
+  unlink         Remove a file (Requires secret key)
+  download       Download file or entire archive (Requires public key)
+`.trimRight()
+
+const kProgramAliasUsage = `
+Aliases:
+  init          ${conf.aliases.init.join(', ')}
+  read          ${conf.aliases.read.join(', ')}
+  write         ${conf.aliases.write.join(', ')}
+  unlink        ${conf.aliases.unlink.join(', ')}
+  readdir       ${conf.aliases.readdir.join(', ')}
+`.trimRight()
+
+// parse program arguments and get `argv'
+const { argv } = program
+  .version(false)
+  .help(false)
+  .usage([kProgramUsage, kProgramCommandUsage, kProgramAliasUsage].join('\n'))
+  .option('help', {
+    alias: 'h',
+    describe: "Show this message",
+  })
+  .option('version', {
+    alias: 'V',
+    describe: "Output program version"
+  })
+  .option('key', {
+    alias: 'k',
+    describe: "Hyperdrive archive public key"
+  })
+  .option('debug', {
+    alias: 'D',
+    describe: "Enable debug output (DEBUG=hyperdrive:cli*)"
+  })
+  .option('start', {
+    alias: 'S',
+    describe: "Range start offset when using ranged streams"
+  })
+  .option('end', {
+    alias: 'E',
+    describe: "Range end offset when using ranged streams"
+  })
+  .option('length', {
+    alias: 'L',
+    describe: "Range length when using ranged streams"
+  })
+
+// main program entry
+void async function main() {
+  let command = argv._.shift()
+
+  // programatically show help
+  if (argv.help) {
+    program.showHelp()
+    process.exit(0)
+  }
+
+  // hijack `DEBUG' environment variable and inject debug label
+  if (argv.debug) {
+    require('debug').enable(kDebugLabel)
+  }
+
+  // coerce alias to real command
+  for (const alias in conf.aliases) {
+    if (conf.aliases[alias].includes(command)) {
+      command = alias
+      break
+    }
+  }
+
+  // call command if exists
+  if (command in commands) {
+    debug("command: %s()", command)
+    return await commands[command]()
+  } else if (null == command) {
+    console.log(kProgramUsage.replace(/\$0/g, program['$0']).trim())
+    process.exit(1)
+  } else {
+    error(
+      "Unknown command `%s'. See `%s --help' for a list of commands.",
+      command, program['$0']
+    )
+    process.exit(1)
+  }
+}()
+
+async function ready(drive) {
+  return await pify(drive.ready)()
+}
+
+async function stats({drive}) {
+  await ready(drive)
+  const { storage, key } = drive
+  info("storage: path: %s", storage)
+  info("storage: key: %s", toHex(key))
+}
+
+function toHex(value) {
+  if (Buffer.isBuffer(value)) {
+    return value.toString('hex')
+  } else {
+    return toHex(Buffer.from(value))
+  }
+}
+
+function info(fmt, ...args) {
+  console.log(`info: ${fmt}`, ...args)
+}
+
+function error(fmt, ...args) {
+  console.error(`error: ${fmt}`, ...args)
+}
+
+function fatal(fmt, ...args) {
+  error(fmt, ...args)
+  process.exit(1)
+}
+
+function onerror(err) {
+  error(err.message)
+  debug(err)
+}
+
+function onfatal(err) {
+  debug(err)
+  fatal(err.message)
+}

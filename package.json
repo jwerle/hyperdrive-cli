@@ -1,0 +1,30 @@
+{
+  "name": "hyperdrive-cli",
+  "version": "1.0.0",
+  "description": "Simpe CLI for a HyperDrive",
+  "main": "index.js",
+  "preferGlobal": true,
+  "bin": {
+    "hyperdrive": "bin/hyperdrive"
+  },
+  "scripts": {
+    "test": ":"
+  },
+  "keywords": [
+    "hyperdrive",
+    "cli"
+  ],
+  "author": "Joseph Werle <joseph.werle@gmail.com>",
+  "license": "MIT",
+  "dependencies": {
+    "debug": "^3.1.0",
+    "extend": "^3.0.1",
+    "hyperdiscovery": "^7.0.0",
+    "hyperdrive": "^9.12.3",
+    "mirror-folder": "^2.1.1",
+    "pify": "^3.0.0",
+    "rc": "^1.2.5",
+    "rimraf": "^2.6.2",
+    "yargs": "^11.0.0"
+  }
+}
