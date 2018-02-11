@@ -81,7 +81,8 @@ Download file or entire archive (Requires public key)
 This module uses [rc](https://github.com/dominictarr/rc) to allow things
 like [hyperdiscovery](https://github.com/karissa/hyperdiscovery) to be
 configured. Hyperdrive options like the secret key for hypercore can also be
-specified here. See below for an example object.
+specified here. Create a `.hyperdriverc` file with your hyperdrive. See below
+for an example object.
 
 ```js
 {
