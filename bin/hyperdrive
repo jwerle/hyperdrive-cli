@@ -27,7 +27,9 @@ const conf = rc('hyperdrive', {
     read: ['get', 'cat'],
     write: ['add', 'put', 'set'],
     unlink: ['rm', 'delete', 'del', 'remove'],
+    upload: ['up'],
     readdir: ['list', 'ls', 'l'],
+    download: ['down'],
   }
 })
 
@@ -50,11 +52,7 @@ const commands = {
 
   // must happen in current working directory
   async stat() {
-    let [ pathspec = null ] = argv._
-
-    if (null == pathspec) {
-      fatal("Missing pathspec")
-    }
+    let [ pathspec = '/' ] = argv._
 
     const drive = hyperdrive(process.cwd(), argv.key, conf.drive)
     await ready(drive)
@@ -209,7 +207,8 @@ const kProgramCommandUsage = `
 Commands:
   init           Initialize a new archive
   info           Show public information about the archive
-  read           Read from a file (Requires public key)
+  stat           Stat a file or directory
+  read           Read a range from a file (Requires public key)
   write          Write to a file (Requires secret key)
   unlink         Remove a file (Requires secret key)
   download       Download file or entire archive (Requires public key)
@@ -217,11 +216,13 @@ Commands:
 
 const kProgramAliasUsage = `
 Aliases:
-  init          ${conf.aliases.init.join(', ')}
-  read          ${conf.aliases.read.join(', ')}
-  write         ${conf.aliases.write.join(', ')}
-  unlink        ${conf.aliases.unlink.join(', ')}
-  readdir       ${conf.aliases.readdir.join(', ')}
+  init           ${conf.aliases.init.join(', ')}
+  read           ${conf.aliases.read.join(', ')}
+  write          ${conf.aliases.write.join(', ')}
+  unlink         ${conf.aliases.unlink.join(', ')}
+  upload         ${conf.aliases.upload.join(', ')}
+  readdir        ${conf.aliases.readdir.join(', ')}
+  download       ${conf.aliases.download.join(', ')}
 `.trimRight()
 
 // parse program arguments and get `argv'
