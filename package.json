@@ -26,5 +26,14 @@
     "rc": "^1.2.5",
     "rimraf": "^2.6.2",
     "yargs": "^11.0.0"
-  }
+  },
+  "devDependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jwerle/hyperdrive-cli.git"
+  },
+  "bugs": {
+    "url": "https://github.com/jwerle/hyperdrive-cli/issues"
+  },
+  "homepage": "https://github.com/jwerle/hyperdrive-cli#readme"
 }
