@@ -1,6 +1,6 @@
 {
   "name": "hyperdrive-cli",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "Simpe CLI for a HyperDrive",
   "main": "index.js",
   "preferGlobal": true,
