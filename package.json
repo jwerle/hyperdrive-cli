@@ -21,8 +21,10 @@
     "extend": "^3.0.1",
     "hyperdiscovery": "^7.0.0",
     "hyperdrive": "^9.12.3",
+    "hyperdrive-http": "^4.2.2",
     "mirror-folder": "^2.1.1",
     "pify": "^3.0.0",
+    "random-access-memory": "^2.4.0",
     "rc": "^1.2.5",
     "rimraf": "^2.6.2",
     "yargs": "^11.0.0"

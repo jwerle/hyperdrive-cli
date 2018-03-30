@@ -13,6 +13,7 @@ $ npm install hyperdrive-cli -g
 ## Usage
 
 ```sh
+
 Usage: hyperdrive: [-hDV] [--help] [--version]
        hyperdrive: <command> [options] -- [pathspec]
 
@@ -22,6 +23,7 @@ Commands:
   info           Show public information about the archive
   stat           Stat a file or directory
   read           Read a range from a file (Requires public key)
+  serve          Serve a hyperdrive over HTTP
   write          Write to a file (Requires secret key)
   unlink         Remove a file (Requires secret key)
   download       Download file or entire archive (Requires public key)
@@ -29,6 +31,7 @@ Commands:
 Aliases:
   init           i, initialize
   read           get, cat
+  serve          http
   write          add, put, set
   unlink         rm, delete, del, remove
   upload         up
@@ -43,7 +46,8 @@ Options:
   --start, -S    Range start offset when using ranged streams
   --end, -E      Range end offset when using ranged streams
   --length, -L   Range length when using ranged streams
-
+  --port, -p     Port to bind HTTP server to
+  --ram, -M      Store in random access memory
 ```
 
 ## API
@@ -67,6 +71,10 @@ Read a range from a file (Requires public key)
 ### `$ hyperdrive write`
 
 Write to a file (Requires secret key)
+
+### `$ hyperdrive serve`
+
+Serve a hyperdrive over HTTP
 
 ### `$ hyperdrive unlink`
 

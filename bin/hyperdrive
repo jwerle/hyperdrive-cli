@@ -3,12 +3,15 @@
 const { basename, resolve } = require('path')
 const { access, stat } = require('fs')
 const hyperdrive = require('hyperdrive')
+const hyperhttp = require('hyperdrive-http')
 const discovery = require('hyperdiscovery')
 const program = require('yargs')
 const extend = require('extend')
 const mirror = require('mirror-folder')
 const rimraf = require('rimraf')
+const http = require('http')
 const pify = require('pify')
+const ram = require('random-access-memory')
 const rc = require('rc')
 const fs = require('fs')
 
@@ -30,6 +33,12 @@ const conf = rc('hyperdrive', {
     upload: ['up'],
     readdir: ['list', 'ls', 'l'],
     download: ['down'],
+    serve: ['http'],
+  },
+
+  drive: {
+    sparseMetadata: false,
+    sparse: true,
   }
 })
 
@@ -38,7 +47,7 @@ const commands = {
   // can happen from any directory
   async init() {
     const [ pathspec = process.cwd() ] = argv._
-    const drive = hyperdrive(pathspec, argv.key, conf.drive)
+    const drive = hyperdrive(storage(pathspec), argv.key, conf.drive)
     await ready(drive)
     await stats({drive})
   },
@@ -46,7 +55,7 @@ const commands = {
   // can happen from any directory
   async info() {
     const [ pathspec = process.cwd() ] = argv._
-    const drive = hyperdrive(pathspec, argv.key, conf.drive)
+    const drive = hyperdrive(storage(pathspec), argv.key, conf.drive)
     await stats({drive})
   },
 
@@ -54,7 +63,7 @@ const commands = {
   async stat() {
     let [ pathspec = '/' ] = argv._
 
-    const drive = hyperdrive(process.cwd(), argv.key, conf.drive)
+    const drive = hyperdrive(storage(process.cwd()), argv.key, conf.drive)
     await ready(drive)
 
     const stats = await pify(drive.stat.bind(drive))(pathspec)
@@ -69,7 +78,7 @@ const commands = {
       fatal("Missing pathspec")
     }
 
-    const drive = hyperdrive(process.cwd(), argv.key, conf.drive)
+    const drive = hyperdrive(storage(process.cwd()), argv.key, conf.drive)
     await ready(drive)
 
     const stats = await pify(drive.stat.bind(drive))(pathspec)
@@ -92,7 +101,7 @@ const commands = {
   // must happen in current working directory
   async readdir() {
     let [ pathspec = '/' ] = argv._
-    const drive = hyperdrive(process.cwd(), argv.key, conf.drive)
+    const drive = hyperdrive(storage(process.cwd()), argv.key, conf.drive)
     await ready(drive)
     const files = await pify(drive.readdir.bind(drive))(pathspec)
     for (const file of files) {
@@ -110,7 +119,7 @@ const commands = {
 
     pathspec = resolve(pathspec)
 
-    const drive = hyperdrive(process.cwd(), argv.key, conf.drive)
+    const drive = hyperdrive(storage(process.cwd()), argv.key, conf.drive)
     await ready(drive)
 
     const stats = await pify(stat)(pathspec)
@@ -133,9 +142,9 @@ const commands = {
 
     if (null == pathspec) {
       fatal("Missing pathspec")
-    }
 
-    const drive = hyperdrive(process.cwd(), argv.key, conf.drive)
+    }
+    const drive = hyperdrive(storage(process.cwd()), argv.key, conf.drive)
     await ready(drive)
 
     try {
@@ -154,7 +163,7 @@ const commands = {
       fatal("Missing pathspec")
     }
 
-    const drive = hyperdrive(process.cwd(), argv.key, conf.drive)
+    const drive = hyperdrive(storage(process.cwd()), argv.key, conf.drive)
     await ready(drive)
 
     const swarm = discovery(drive, extend(true, conf.discovery || {}, {
@@ -163,13 +172,16 @@ const commands = {
       download: true,
     }))
 
-    await pify(drive.download.bind(drive))(pathspec)
-    process.nextTick(() => process.exit(0))
+    try {
+      await pify(drive.access.bind(drive))(pathspec)
+    } catch (err) {
+      await pify(drive.download.bind(drive))(pathspec)
+    }
   },
 
   // must happen in current working directory
   async upload() {
-    const drive = hyperdrive(process.cwd(), argv.key, conf.drive)
+    const drive = hyperdrive(storage(process.cwd()), argv.key, conf.drive)
     await ready(drive)
     const swarm = discovery(drive, extend(true, conf.discovery || {}, {
       live: false,
@@ -192,7 +204,16 @@ const commands = {
     } catch (err) {
       onerror(err)
     }
-  }
+  },
+
+  async serve() {
+    const drive = hyperdrive(storage(process.cwd()), argv.key, conf.drive)
+    await ready(drive)
+    const swarm = discovery(drive, extend(true, conf.discovery || {}, { live: true }))
+    const onrequest = hyperhttp(drive)
+    const server = http.createServer(onrequest)
+    server.listen(argv.port || 3000)
+  },
 }
 
 // passed to `yargs.usage()'
@@ -209,6 +230,7 @@ Commands:
   info           Show public information about the archive
   stat           Stat a file or directory
   read           Read a range from a file (Requires public key)
+  serve          Serve a hyperdrive over HTTP
   write          Write to a file (Requires secret key)
   unlink         Remove a file (Requires secret key)
   download       Download file or entire archive (Requires public key)
@@ -218,6 +240,7 @@ const kProgramAliasUsage = `
 Aliases:
   init           ${conf.aliases.init.join(', ')}
   read           ${conf.aliases.read.join(', ')}
+  serve          ${conf.aliases.serve.join(', ')}
   write          ${conf.aliases.write.join(', ')}
   unlink         ${conf.aliases.unlink.join(', ')}
   upload         ${conf.aliases.upload.join(', ')}
@@ -257,6 +280,14 @@ const { argv } = program
   .option('length', {
     alias: 'L',
     describe: "Range length when using ranged streams"
+  })
+  .option('port', {
+    alias: 'p',
+    describe: "Port to bind HTTP server to"
+  })
+  .option('ram', {
+    alias: 'M',
+    describe: "Store in random access memory"
   })
 
 // main program entry
@@ -307,6 +338,11 @@ async function stats({drive}) {
   const { storage, key } = drive
   info("storage: path: %s", storage)
   info("storage: key: %s", toHex(key))
+}
+
+function storage(pathspec) {
+  if (argv.ram) { return ram }
+  else { return pathspec }
 }
 
 function toHex(value) {
