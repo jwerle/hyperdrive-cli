@@ -17,17 +17,17 @@
   "author": "Joseph Werle <joseph.werle@gmail.com>",
   "license": "MIT",
   "dependencies": {
-    "debug": "^3.1.0",
-    "extend": "^3.0.1",
-    "hyperdiscovery": "^7.0.0",
-    "hyperdrive": "^9.12.3",
-    "hyperdrive-http": "^4.2.2",
-    "mirror-folder": "^2.1.1",
+    "debug": "^3.2.6",
+    "extend": "^3.0.2",
+    "hyperdiscovery": "^7.1.1",
+    "hyperdrive": "^9.14.2",
+    "hyperdrive-http": "^4.3.4",
+    "mirror-folder": "^2.2.0",
     "pify": "^3.0.0",
     "random-access-memory": "^2.4.0",
-    "rc": "^1.2.5",
-    "rimraf": "^2.6.2",
-    "yargs": "^11.0.0"
+    "rc": "^1.2.8",
+    "rimraf": "^2.6.3",
+    "yargs": "^11.1.0"
   },
   "devDependencies": {},
   "repository": {
