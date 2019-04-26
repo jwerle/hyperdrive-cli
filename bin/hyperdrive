@@ -117,8 +117,6 @@ const commands = {
       fatal("Missing pathspec")
     }
 
-    pathspec = resolve(pathspec)
-
     const drive = hyperdrive(storage(process.cwd()), argv.key, conf.drive)
     await ready(drive)
 
